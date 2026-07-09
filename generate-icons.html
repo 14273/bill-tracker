@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>生成 PWA 图标</title>
+  <style>
+    body { font-family: sans-serif; padding: 30px; background: #f0f2f7; }
+    h2 { margin-bottom: 20px; }
+    canvas { display: none; }
+    .btns { display: flex; gap: 12px; flex-wrap: wrap; }
+    .btn {
+      padding: 10px 22px; background: #6366f1; color: #fff;
+      border: none; border-radius: 8px; cursor: pointer;
+      font-size: .9rem; font-weight: 600;
+    }
+    .btn:hover { opacity: .85; }
+    .tip { margin-top: 16px; color: #6b7280; font-size: .85rem; line-height: 1.6; }
+    .tip code { background: #e5e7eb; padding: 2px 6px; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <h2>📱 PWA 图标生成器</h2>
+  <canvas id="c192" width="192" height="192"></canvas>
+  <canvas id="c512" width="512" height="512"></canvas>
+  <div class="btns">
+    <button class="btn" onclick="download(192)">⬇️ 下载 icon-192.png</button>
+    <button class="btn" onclick="download(512)">⬇️ 下载 icon-512.png</button>
+  </div>
+  <p class="tip">
+    下载后将两个文件放到与 <code>bill-tracker.html</code> 相同的文件夹中。<br/>
+    完成后可关闭此页面。
+  </p>
+
+  <script>
+    function drawIcon(size) {
+      const id = size === 192 ? 'c192' : 'c512';
+      const canvas = document.getElementById(id);
+      const ctx = canvas.getContext('2d');
+      const s = size;
+      const r = s * 0.22; // corner radius
+
+      // Background gradient
+      const grad = ctx.createLinearGradient(0, 0, s, s);
+      grad.addColorStop(0, '#6366f1');
+      grad.addColorStop(1, '#8b5cf6');
+
+      // Rounded rect
+      ctx.beginPath();
+      ctx.moveTo(r, 0);
+      ctx.lineTo(s - r, 0);
+      ctx.quadraticCurveTo(s, 0, s, r);
+      ctx.lineTo(s, s - r);
+      ctx.quadraticCurveTo(s, s, s - r, s);
+      ctx.lineTo(r, s);
+      ctx.quadraticCurveTo(0, s, 0, s - r);
+      ctx.lineTo(0, r);
+      ctx.quadraticCurveTo(0, 0, r, 0);
+      ctx.closePath();
+      ctx.fillStyle = grad;
+      ctx.fill();
+
+      // Emoji 💰
+      const fontSize = Math.round(s * 0.52);
+      ctx.font = `${fontSize}px serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('💰', s / 2, s / 2 + s * 0.03);
+    }
+
+    function download(size) {
+      drawIcon(size);
+      const id = size === 192 ? 'c192' : 'c512';
+      const canvas = document.getElementById(id);
+      const a = document.createElement('a');
+      a.download = `icon-${size}.png`;
+      a.href = canvas.toDataURL('image/png');
+      a.click();
+    }
+
+    // 预渲染
+    drawIcon(192);
+    drawIcon(512);
+  </script>
+</body>
+</html>
