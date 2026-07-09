@@ -1,0 +1,26 @@
+{
+  "name": "账单记录工具",
+  "short_name": "账单",
+  "description": "轻松管理收支，随时掌握财务状况",
+  "start_url": "./bill-tracker.html",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#6366f1",
+  "theme_color": "#6366f1",
+  "lang": "zh-CN",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["finance", "productivity"]
+}
