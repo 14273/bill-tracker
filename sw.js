@@ -3,7 +3,7 @@
    策略：Cache First（壳） + Network First（外部CDN）
 ══════════════════════════════════════════ */
 
-const CACHE_NAME = 'bill-tracker-v1';
+const CACHE_NAME = 'bill-tracker-v2';
 
 // 本地资源：安装时预缓存
 const PRECACHE = [
