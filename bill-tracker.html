@@ -12,6 +12,14 @@
   <link rel="manifest" href="./manifest.json" />
   <link rel="apple-touch-icon" href="./icon-192.png" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <!-- Supabase SDK -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script>
+    const SUPABASE_URL = 'https://xyyudldehnclmhlvdoxn.supabase.co';
+    const SUPABASE_KEY = 'sb_publishable_dMmf-G3R0LnFCnSu4upVxQ_i0lr5hcQ';
+    window._sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    window._sbReady = true;
+  </script>
   <style>
     /* ── Reset & Base ── */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -230,11 +238,81 @@
     .toolbar { display: flex; gap: 8px; margin-bottom: 14px; }
     .toolbar .spacer { flex: 1; }
 
+    /* ── Edit Modal ── */
+    .modal-mask {
+      display: none;
+      position: fixed; inset: 0; z-index: 2000;
+      background: rgba(0,0,0,.45);
+      align-items: center; justify-content: center;
+      padding: 16px;
+    }
+    .modal-mask.open { display: flex; }
+    .modal {
+      background: var(--card);
+      border-radius: var(--radius);
+      padding: 24px 20px 20px;
+      width: 100%; max-width: 420px;
+      box-shadow: 0 8px 40px rgba(0,0,0,.2);
+      animation: modalIn .2s ease;
+    }
+    @keyframes modalIn {
+      from { transform: translateY(20px); opacity: 0; }
+      to   { transform: translateY(0);    opacity: 1; }
+    }
+    .modal-title {
+      font-size: 1rem; font-weight: 700;
+      margin-bottom: 16px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .modal-close {
+      background: none; border: none; font-size: 1.2rem;
+      cursor: pointer; color: var(--muted); line-height: 1;
+      padding: 2px 6px;
+    }
+    .modal-close:hover { color: var(--text); }
+    .modal-footer { display: flex; gap: 10px; margin-top: 16px; }
+    .modal-footer .btn { flex: 1; }
+    .btn-cancel { background: #f3f4f6; color: var(--text); }
+
+    /* ── 每条账单操作按钮 ── */
+    .txn-actions { display: flex; gap: 4px; flex-shrink: 0; }
+    .txn-edit {
+      background: none; border: none; cursor: pointer;
+      color: #d1d5db; font-size: .95rem; padding: 4px;
+      transition: color .2s;
+    }
+    .txn-edit:hover { color: var(--primary); }
+
     /* ── Responsive ── */
     @media (max-width: 768px) {
       .main-grid       { grid-template-columns: 1fr; }
       .summary-grid    { grid-template-columns: 1fr; }
       .charts-grid     { grid-template-columns: 1fr; }
+    }
+
+    /* ── Auth Area ── */
+    .auth-btn {
+      display: flex; align-items: center; gap: 6px;
+      padding: 7px 14px; border-radius: 20px; border: none;
+      font-size: .82rem; font-weight: 600; cursor: pointer;
+      transition: opacity .2s, transform .1s;
+      touch-action: manipulation;
+    }
+    .auth-btn:active { transform: scale(.96); }
+    .btn-login  { background: #fff; color: #4f46e5; }
+    .btn-logout { background: rgba(255,255,255,.2); color: #fff; border: 1px solid rgba(255,255,255,.4); }
+    .avatar {
+      width: 28px; height: 28px; border-radius: 50%;
+      border: 2px solid rgba(255,255,255,.6);
+      object-fit: cover;
+    }
+    .sync-dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: #34d399; display: inline-block;
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%,100% { opacity: 1; } 50% { opacity: .4; }
     }
 
     /* ── PWA / 移动端优化 ── */
@@ -287,8 +365,20 @@
 </div>
 
 <header class="app-header">
-  <h1>💰 账单记录工具</h1>
-  <p>轻松管理您的收支，随时掌握财务状况</p>
+  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+    <div>
+      <h1>💰 账单记录工具</h1>
+      <p>轻松管理您的收支，随时掌握财务状况</p>
+    </div>
+    <div id="auth-area" style="display:flex;align-items:center;gap:10px;flex-shrink:0">
+      <!-- 动态渲染 -->
+    </div>
+  </div>
+  <!-- 同步状态条 -->
+  <div id="sync-bar" style="display:none;margin-top:10px;font-size:.78rem;opacity:.85;display:flex;align-items:center;gap:6px">
+    <span id="sync-icon">☁️</span>
+    <span id="sync-text">云同步已开启</span>
+  </div>
 </header>
 
 <div class="container">
@@ -415,6 +505,71 @@
   </div><!-- /main-grid -->
 </div><!-- /container -->
 
+<!-- 登录 / 注册弹窗 -->
+<div class="modal-mask" id="auth-modal">
+  <div class="modal">
+    <div class="modal-title">
+      <span id="auth-modal-title">🔑 登录账号</span>
+      <button class="modal-close" onclick="closeAuthModal()">✕</button>
+    </div>
+    <!-- 标签切换 -->
+    <div style="display:flex;border-bottom:1px solid var(--border);margin-bottom:16px">
+      <button id="tab-login"    onclick="switchAuthTab('login')"
+        style="flex:1;padding:8px;border:none;background:none;font-weight:600;cursor:pointer;color:var(--primary);border-bottom:2px solid var(--primary)">登录</button>
+      <button id="tab-register" onclick="switchAuthTab('register')"
+        style="flex:1;padding:8px;border:none;background:none;font-weight:500;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent">注册</button>
+    </div>
+    <div class="form-row">
+      <label>邮箱</label>
+      <input type="email" id="auth-email" placeholder="your@email.com" autocomplete="email"/>
+    </div>
+    <div class="form-row">
+      <label>密码</label>
+      <input type="password" id="auth-password" placeholder="至少 6 位" autocomplete="current-password"/>
+    </div>
+    <div id="auth-error" style="color:var(--expense);font-size:.82rem;margin-bottom:8px;display:none"></div>
+    <button class="btn btn-primary" id="auth-submit-btn" onclick="submitAuth()">登 录</button>
+    <p style="text-align:center;font-size:.78rem;color:var(--muted);margin-top:12px">
+      登录后数据自动在所有设备间同步
+    </p>
+  </div>
+</div>
+
+<!-- 编辑账单弹窗 -->
+<div class="modal-mask" id="edit-modal" onclick="handleMaskClick(event)">
+  <div class="modal">
+    <div class="modal-title">
+      ✏️ 编辑账单
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <input type="hidden" id="edit-id" />
+    <div class="type-toggle">
+      <button class="type-btn active-expense" id="edit-btn-expense" onclick="setEditType('expense')">🔴 支出</button>
+      <button class="type-btn" id="edit-btn-income" onclick="setEditType('income')">🟢 收入</button>
+    </div>
+    <div class="form-row">
+      <label>金额 (¥)</label>
+      <input type="number" id="edit-amount" placeholder="0.00" min="0" step="0.01" />
+    </div>
+    <div class="form-row">
+      <label>分类</label>
+      <select id="edit-category"></select>
+    </div>
+    <div class="form-row">
+      <label>描述</label>
+      <input type="text" id="edit-desc" placeholder="备注（可选）" maxlength="50" />
+    </div>
+    <div class="form-row">
+      <label>日期</label>
+      <input type="date" id="edit-date" />
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-cancel" onclick="closeModal()">取消</button>
+      <button class="btn btn-primary" onclick="saveEdit()">保存</button>
+    </div>
+  </div>
+</div>
+
 <script>
 /* ══════════════════════════════════════════
    STATE
@@ -431,6 +586,8 @@ let transactions = JSON.parse(localStorage.getItem(KEY_TXN)  || '[]');
 let categories   = JSON.parse(localStorage.getItem(KEY_CATS) || 'null') || DEFAULT_CATS;
 let currentType  = 'expense';
 let catTab       = 'expense';
+let currentUser  = null;      // Firebase 登录用户
+let unsubscribe  = null;      // Firestore 实时监听取消函数
 
 // Charts instances
 let chartPie = null, chartBar = null;
@@ -439,15 +596,13 @@ let chartPie = null, chartBar = null;
    INIT
 ══════════════════════════════════════════ */
 function init() {
-  // default date = today
   const today = todayStr();
   document.getElementById('f-date').value = today;
-
-  // default filter: this month
   const [y, m] = today.split('-');
   document.getElementById('filter-from').value = `${y}-${m}-01`;
   document.getElementById('filter-to').value   = today;
 
+  renderAuthArea();
   renderAll();
 }
 
@@ -459,11 +614,173 @@ function todayStr() {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
 function fmtAmt(n) { return '¥' + Number(n).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
-function save() {
+function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
+
+/* 本地存储 */
+function saveLocal() {
   localStorage.setItem(KEY_TXN,  JSON.stringify(transactions));
   localStorage.setItem(KEY_CATS, JSON.stringify(categories));
 }
-function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
+
+/* 云端 + 本地双写 */
+async function save() {
+  saveLocal();
+  if (currentUser) await cloudSave();
+}
+
+/* ══════════════════════════════════════════
+   AUTH UI
+══════════════════════════════════════════ */
+let authTab = 'login'; // 'login' | 'register'
+
+function renderAuthArea() {
+  const el = document.getElementById('auth-area');
+  if (currentUser) {
+    const email = currentUser.email || '';
+    const short = email.split('@')[0];
+    el.innerHTML = `
+      <span style="font-size:.82rem;color:#fff;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">👤 ${short}</span>
+      <button class="auth-btn btn-logout" onclick="sbLogout()">退出</button>
+    `;
+    document.getElementById('sync-bar').style.display = 'flex';
+  } else {
+    el.innerHTML = `<button class="auth-btn btn-login" onclick="openAuthModal()">☁️ 登录同步</button>`;
+    document.getElementById('sync-bar').style.display = 'none';
+  }
+}
+
+function openAuthModal() {
+  switchAuthTab('login');
+  document.getElementById('auth-email').value    = '';
+  document.getElementById('auth-password').value = '';
+  hideAuthError();
+  document.getElementById('auth-modal').classList.add('open');
+}
+function closeAuthModal() {
+  document.getElementById('auth-modal').classList.remove('open');
+}
+function switchAuthTab(tab) {
+  authTab = tab;
+  const isLogin = tab === 'login';
+  document.getElementById('auth-modal-title').textContent  = isLogin ? '🔑 登录账号' : '📝 注册账号';
+  document.getElementById('auth-submit-btn').textContent   = isLogin ? '登 录' : '注 册';
+  document.getElementById('tab-login').style.cssText    = isLogin
+    ? 'flex:1;padding:8px;border:none;background:none;font-weight:600;cursor:pointer;color:var(--primary);border-bottom:2px solid var(--primary)'
+    : 'flex:1;padding:8px;border:none;background:none;font-weight:500;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent';
+  document.getElementById('tab-register').style.cssText = !isLogin
+    ? 'flex:1;padding:8px;border:none;background:none;font-weight:600;cursor:pointer;color:var(--primary);border-bottom:2px solid var(--primary)'
+    : 'flex:1;padding:8px;border:none;background:none;font-weight:500;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent';
+  hideAuthError();
+}
+function showAuthError(msg) {
+  const el = document.getElementById('auth-error');
+  el.textContent = msg; el.style.display = 'block';
+}
+function hideAuthError() {
+  document.getElementById('auth-error').style.display = 'none';
+}
+
+async function submitAuth() {
+  const email    = document.getElementById('auth-email').value.trim();
+  const password = document.getElementById('auth-password').value;
+  if (!email || !password) { showAuthError('请填写邮箱和密码'); return; }
+  if (password.length < 6) { showAuthError('密码至少 6 位'); return; }
+
+  const btn = document.getElementById('auth-submit-btn');
+  btn.textContent = '请稍候...'; btn.disabled = true;
+  hideAuthError();
+
+  const sb = window._sb;
+  let error;
+  if (authTab === 'login') {
+    ({ error } = await sb.auth.signInWithPassword({ email, password }));
+  } else {
+    ({ error } = await sb.auth.signUp({ email, password }));
+    if (!error) {
+      showAuthError('✅ 注册成功！请检查邮箱验证后再登录。');
+      btn.textContent = authTab === 'login' ? '登 录' : '注 册';
+      btn.disabled = false;
+      return;
+    }
+  }
+
+  btn.textContent = authTab === 'login' ? '登 录' : '注 册';
+  btn.disabled = false;
+
+  if (error) {
+    const msg = error.message.includes('Invalid login') ? '邮箱或密码错误'
+              : error.message.includes('already registered') ? '该邮箱已注册，请直接登录'
+              : error.message;
+    showAuthError(msg);
+  } else {
+    closeAuthModal();
+  }
+}
+
+async function sbLogout() {
+  await window._sb.auth.signOut();
+}
+
+function setSyncStatus(state) {
+  const icon = document.getElementById('sync-icon');
+  const text = document.getElementById('sync-text');
+  if (!icon) return;
+  if (state === 'ok')      { icon.textContent = '☁️'; text.textContent = '云同步已开启'; }
+  if (state === 'syncing') { icon.textContent = '🔄'; text.textContent = '同步中...'; }
+  if (state === 'error')   { icon.textContent = '⚠️'; text.textContent = '同步失败，使用本地数据'; }
+}
+
+/* ══════════════════════════════════════════
+   SUPABASE 云同步
+══════════════════════════════════════════ */
+async function cloudSave() {
+  const sb = window._sb;
+  const uid = currentUser.id;
+  try {
+    setSyncStatus('syncing');
+    await Promise.all([
+      sb.from('bt_data').upsert({ user_id: uid, key: 'transactions', value: transactions }, { onConflict: 'user_id,key' }),
+      sb.from('bt_data').upsert({ user_id: uid, key: 'categories',   value: categories   }, { onConflict: 'user_id,key' }),
+    ]);
+    setSyncStatus('ok');
+  } catch(e) {
+    console.error('[Cloud] 保存失败', e);
+    setSyncStatus('error');
+  }
+}
+
+async function cloudLoad() {
+  const sb = window._sb;
+  const uid = currentUser.id;
+  try {
+    const { data, error } = await sb.from('bt_data').select('key,value').eq('user_id', uid);
+    if (error) throw error;
+    data.forEach(row => {
+      if (row.key === 'transactions') transactions = row.value || [];
+      if (row.key === 'categories')   categories   = row.value || DEFAULT_CATS;
+    });
+    saveLocal();
+    renderAll();
+    setSyncStatus('ok');
+  } catch(e) {
+    console.warn('[Cloud] 加载失败，使用本地数据', e);
+    setSyncStatus('error');
+  }
+}
+
+/* ── 监听登录状态（页面加载后立即启动） ── */
+window._sb.auth.onAuthStateChange(async (event, session) => {
+  currentUser = session ? session.user : null;
+  renderAuthArea();
+  if (currentUser) {
+    setSyncStatus('syncing');
+    await cloudLoad();
+  } else {
+    transactions = JSON.parse(localStorage.getItem(KEY_TXN) || '[]');
+    categories   = JSON.parse(localStorage.getItem(KEY_CATS) || 'null') || DEFAULT_CATS;
+    renderAll();
+  }
+});
 
 /* ══════════════════════════════════════════
    TYPE TOGGLE
@@ -513,12 +830,92 @@ function addTransaction() {
 }
 
 /* ══════════════════════════════════════════
-   DELETE TRANSACTION
+   DELETE TRANSACTION（带确认）
 ══════════════════════════════════════════ */
+function confirmDelete(id) {
+  const t = transactions.find(t => t.id === id);
+  if (!t) return;
+  const label = t.desc || t.category;
+  if (confirm(`确认删除「${label}」这条账单？`)) {
+    transactions = transactions.filter(t => t.id !== id);
+    save();
+    renderAll();
+    showToast('🗑️ 已删除');
+  }
+}
+
 function deleteTransaction(id) {
   transactions = transactions.filter(t => t.id !== id);
   save();
   renderAll();
+}
+
+/* ══════════════════════════════════════════
+   EDIT TRANSACTION
+══════════════════════════════════════════ */
+let editType = 'expense';
+
+function openEditModal(id) {
+  const t = transactions.find(t => t.id === id);
+  if (!t) return;
+
+  editType = t.type;
+  document.getElementById('edit-id').value     = id;
+  document.getElementById('edit-amount').value = t.amount;
+  document.getElementById('edit-desc').value   = t.desc || '';
+  document.getElementById('edit-date').value   = t.date;
+
+  // 设置类型按钮状态
+  setEditType(t.type);
+
+  // 填充分类选项并选中当前值
+  refreshEditCategorySelect(t.category);
+
+  document.getElementById('edit-modal').classList.add('open');
+}
+
+function setEditType(t) {
+  editType = t;
+  document.getElementById('edit-btn-expense').className = 'type-btn' + (t==='expense' ? ' active-expense' : '');
+  document.getElementById('edit-btn-income').className  = 'type-btn' + (t==='income'  ? ' active-income'  : '');
+  // 切换类型时刷新分类选项
+  refreshEditCategorySelect();
+}
+
+function refreshEditCategorySelect(selectedCat) {
+  const sel = document.getElementById('edit-category');
+  sel.innerHTML = categories[editType].map(c =>
+    `<option${c === selectedCat ? ' selected' : ''}>${c}</option>`
+  ).join('');
+}
+
+function closeModal() {
+  document.getElementById('edit-modal').classList.remove('open');
+}
+
+function handleMaskClick(e) {
+  // 点遮罩层本身（非弹窗内容）时关闭
+  if (e.target === document.getElementById('edit-modal')) closeModal();
+}
+
+function saveEdit() {
+  const id     = document.getElementById('edit-id').value;
+  const amount = parseFloat(document.getElementById('edit-amount').value);
+  const cat    = document.getElementById('edit-category').value;
+  const desc   = document.getElementById('edit-desc').value.trim();
+  const date   = document.getElementById('edit-date').value;
+
+  if (!amount || amount <= 0) { alert('请输入有效金额'); return; }
+  if (!date)                   { alert('请选择日期'); return; }
+
+  const idx = transactions.findIndex(t => t.id === id);
+  if (idx === -1) return;
+
+  transactions[idx] = { ...transactions[idx], type: editType, amount, category: cat, desc, date };
+  save();
+  closeModal();
+  renderAll();
+  showToast('✅ 已保存');
 }
 
 /* ══════════════════════════════════════════
@@ -597,7 +994,10 @@ function renderList(list) {
         <div class="txn-meta">${t.date} · ${t.category}</div>
       </div>
       <div class="txn-amount ${t.type}">${t.type==='income'?'+':'-'}${fmtAmt(t.amount)}</div>
-      <button class="txn-del" onclick="deleteTransaction('${t.id}')" title="删除">✕</button>
+      <div class="txn-actions">
+        <button class="txn-edit" onclick="openEditModal('${t.id}')" title="编辑">✏️</button>
+        <button class="txn-del"  onclick="confirmDelete('${t.id}')" title="删除">🗑️</button>
+      </div>
     </div>
   `).join('');
 }
@@ -715,7 +1115,8 @@ function addCategory() {
   if (!name) return;
   if (categories[catTab].includes(name)) { alert('分类已存在'); return; }
   categories[catTab].push(name);
-  save();
+  saveLocal();
+  if (currentUser && window._fbReady) cloudSave();
   document.getElementById('new-cat-name').value = '';
   renderAll();
 }
@@ -723,7 +1124,8 @@ function addCategory() {
 function deleteCategory(name) {
   if (categories[catTab].length <= 1) { alert('至少保留一个分类'); return; }
   categories[catTab] = categories[catTab].filter(c => c !== name);
-  save();
+  saveLocal();
+  if (currentUser && window._fbReady) cloudSave();
   renderAll();
 }
 
